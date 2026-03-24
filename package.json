@@ -1,0 +1,31 @@
+{
+  "name": "sat-reading-platform",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter api dev",
+    "dev:web": "pnpm --filter web dev",
+    "dev:all": "pnpm --filter api dev & pnpm --filter web dev",
+    "build": "pnpm --filter api build && pnpm --filter web build",
+    "build:api": "pnpm --filter api build",
+    "build:web": "pnpm --filter web build",
+    "test": "pnpm --filter api test",
+    "test:e2e": "pnpm --filter api test:e2e",
+    "lint": "pnpm --filter api lint",
+    "db:migrate": "pnpm --filter api typeorm migration:run -- -d src/config/data-source.ts",
+    "db:migrate:generate": "pnpm --filter api typeorm migration:generate",
+    "db:migrate:revert": "pnpm --filter api typeorm migration:revert -- -d src/config/data-source.ts",
+    "db:seed": "pnpm --filter api seed",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "prettier": "^3.2.0",
+    "@types/node": "^20.11.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

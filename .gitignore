@@ -1,0 +1,36 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+coverage/
+.nyc_output/
+*.tsbuildinfo
+.next/
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# Runtime
+.service.pids
+*.pids
+
+# Data (copyrighted content, PDFs, parsed output)
+data/
+
+# IDE
+.vscode/
+.idea/
+
+# Secrets
+*.pem
+*.key
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Official content seeds (private — see README)
+apps/api/src/database/seeds/content-official*.seed.ts
