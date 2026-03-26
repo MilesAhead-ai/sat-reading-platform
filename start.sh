@@ -3,9 +3,9 @@ set -e
 
 cd "$(dirname "$0")"
 
-# Support both $DC V2 and docker-compose V1
-if $DC version >/dev/null 2>&1; then
-  DC="$DC"
+# Support both docker compose V2 and docker-compose V1
+if docker compose version >/dev/null 2>&1; then
+  DC="docker compose"
 else
   DC="docker-compose"
 fi
