@@ -1,12 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  BedrockRuntimeClient,
-  ConverseCommand,
-} from '@aws-sdk/client-bedrock-runtime';
 import { ErrorPattern } from '../database/entities/student-response.entity';
 
-const DEFAULT_BEDROCK_MODEL = 'us.anthropic.claude-sonnet-4-20250514-v1:0';
 const DEFAULT_OPENAI_MODEL = 'gpt-4o';
 const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-4-20250514';
 
@@ -90,15 +85,18 @@ export interface TipGenerationContext {
 export class LlmService {
   private readonly logger = new Logger(LlmService.name);
   private readonly provider: string;
-  private bedrockClient?: BedrockRuntimeClient;
 
   constructor(private readonly configService: ConfigService) {
-    this.provider = this.configService.get<string>('LLM_PROVIDER') || 'bedrock';
-    if (this.provider === 'bedrock') {
-      const region = this.configService.get<string>('AWS_REGION') || 'us-east-1';
-      this.bedrockClient = new BedrockRuntimeClient({ region });
+    this.provider = this.configService.get<string>('LLM_PROVIDER') || '';
+    if (this.provider) {
+      this.logger.log(`LLM provider: ${this.provider}`);
+    } else {
+      this.logger.warn('No LLM_PROVIDER configured — AI features disabled');
     }
-    this.logger.log(`LLM provider: ${this.provider}`);
+  }
+
+  isConfigured(): boolean {
+    return this.provider === 'openai' || this.provider === 'anthropic';
   }
 
   /**
@@ -111,21 +109,35 @@ export class LlmService {
       case 'anthropic':
         return this.callAnthropic(prompt, maxTokens);
       default:
-        return this.callBedrock(prompt, maxTokens);
+        throw new Error(
+          'LLM not configured. Set LLM_PROVIDER to "openai" or "anthropic" in .env',
+        );
     }
   }
 
-  private async callBedrock(prompt: string, maxTokens: number): Promise<string> {
-    const modelId = this.configService.get<string>('BEDROCK_MODEL') || DEFAULT_BEDROCK_MODEL;
-    const command = new ConverseCommand({
-      modelId,
-      messages: [{ role: 'user', content: [{ text: prompt }] }],
-      inferenceConfig: { maxTokens },
-    });
-    const response = await this.bedrockClient!.send(command);
-    const text = response.output?.message?.content?.[0]?.text;
-    if (!text) throw new Error('No text in Bedrock response');
-    return text;
+  /**
+   * Multi-turn LLM call with system prompt (used by coaching).
+   */
+  async callWithMessages(params: {
+    systemPrompt: string;
+    messages: { role: 'user' | 'assistant'; content: string }[];
+    maxTokens: number;
+  }): Promise<string | null> {
+    if (!this.isConfigured()) return null;
+
+    try {
+      switch (this.provider) {
+        case 'openai':
+          return await this.callOpenAIMessages(params);
+        case 'anthropic':
+          return await this.callAnthropicMessages(params);
+        default:
+          return null;
+      }
+    } catch (error) {
+      this.logger.error('callWithMessages failed', error);
+      return null;
+    }
   }
 
   private async callOpenAI(prompt: string, maxTokens: number): Promise<string> {
@@ -145,6 +157,41 @@ export class LlmService {
         messages: [{ role: 'user', content: prompt }],
         max_tokens: maxTokens,
       }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`OpenAI API error ${response.status}: ${body}`);
+    }
+
+    const data: any = await response.json();
+    const text = data.choices?.[0]?.message?.content;
+    if (!text) throw new Error('No text in OpenAI response');
+    return text;
+  }
+
+  private async callOpenAIMessages(params: {
+    systemPrompt: string;
+    messages: { role: 'user' | 'assistant'; content: string }[];
+    maxTokens: number;
+  }): Promise<string> {
+    const apiKey = this.configService.get<string>('OPENAI_API_KEY');
+    if (!apiKey) throw new Error('OPENAI_API_KEY is required when LLM_PROVIDER=openai');
+    const model = this.configService.get<string>('OPENAI_MODEL') || DEFAULT_OPENAI_MODEL;
+    const baseUrl = this.configService.get<string>('OPENAI_BASE_URL') || 'https://api.openai.com/v1';
+
+    const messages = [
+      { role: 'system', content: params.systemPrompt },
+      ...params.messages,
+    ];
+
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ model, messages, max_tokens: params.maxTokens }),
     });
 
     if (!response.ok) {
@@ -189,9 +236,47 @@ export class LlmService {
     return text;
   }
 
+  private async callAnthropicMessages(params: {
+    systemPrompt: string;
+    messages: { role: 'user' | 'assistant'; content: string }[];
+    maxTokens: number;
+  }): Promise<string> {
+    const apiKey = this.configService.get<string>('ANTHROPIC_API_KEY');
+    if (!apiKey) throw new Error('ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic');
+    const model = this.configService.get<string>('ANTHROPIC_MODEL') || DEFAULT_ANTHROPIC_MODEL;
+    const baseUrl = this.configService.get<string>('ANTHROPIC_BASE_URL') || 'https://api.anthropic.com';
+
+    const response = await fetch(`${baseUrl}/v1/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: params.maxTokens,
+        system: params.systemPrompt,
+        messages: params.messages,
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`Anthropic API error ${response.status}: ${body}`);
+    }
+
+    const data: any = await response.json();
+    const text = data.content?.[0]?.text;
+    if (!text) throw new Error('No text in Anthropic response');
+    return text;
+  }
+
   async generateTip(
     context: TipGenerationContext,
   ): Promise<{ content: string; category: string }> {
+    if (!this.isConfigured()) return this.fallbackTip();
+
     const skillsList = context.weakestSkills
       .map((s) => `${s.name} (ability: ${s.ability.toFixed(2)})`)
       .join(', ');
@@ -264,6 +349,12 @@ Respond in JSON format: { "content": "your tip here", "category": "error_pattern
       };
     }[];
   }> {
+    if (!this.isConfigured()) {
+      throw new ServiceUnavailableException(
+        'Exercise generation requires a configured LLM provider. Set LLM_PROVIDER in .env.',
+      );
+    }
+
     const skillsList = params.targetSkills
       .map((s) => `${s.id} ("${s.name}")`)
       .join(', ');
@@ -378,7 +469,7 @@ IMPORTANT: correctAnswer is a 0-based index (0=A, 1=B, 2=C, 3=D). Each question'
     passageText: string,
     wrongAnswers: ErrorClassificationInput[],
   ): Promise<ErrorClassificationResult[]> {
-    if (wrongAnswers.length === 0) return [];
+    if (!this.isConfigured() || wrongAnswers.length === 0) return [];
 
     const answersText = wrongAnswers
       .map((wa, i) => {
@@ -445,6 +536,10 @@ Respond with ONLY valid JSON array. Use the exact question IDs from above (the [
     correctAnswer: number;
     explanation: string | null;
   }): Promise<string> {
+    if (!this.isConfigured()) {
+      return params.explanation || 'Step-by-step reasoning is not available — no LLM provider configured.';
+    }
+
     const choicesText = params.choices
       .map((c) => `${c.label}: ${c.text}`)
       .join('\n');
@@ -491,6 +586,12 @@ Write in a clear, encouraging teaching tone. Do NOT use markdown headers — jus
     correctAnswer: number;
     explanation: string;
   }> {
+    if (!this.isConfigured()) {
+      throw new ServiceUnavailableException(
+        'Similar question generation requires a configured LLM provider. Set LLM_PROVIDER in .env.',
+      );
+    }
+
     const prompt = `You are an SAT Reading test content author. Generate ONE new question that tests the same skill as the original but with a different angle.
 
 Passage:

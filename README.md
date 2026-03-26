@@ -50,7 +50,7 @@ To stop all services:
 - **Adaptive Difficulty** — questions calibrated to challenge without overwhelming
 - **Spaced Repetition** — wrong answers automatically queued for review at optimal intervals
 - **AI-Powered Content** — generate new exercises targeting specific weaknesses
-- **Multi-Provider LLM** — choose from AWS Bedrock, OpenAI, or Anthropic
+- **Multi-Provider LLM** — choose OpenAI or Anthropic
 - **Score Projection** — estimate your SAT score range based on current performance
 
 ## LLM Configuration
@@ -61,10 +61,9 @@ AI features are **optional**. Set `LLM_PROVIDER` in `.env` to enable them:
 |----------|--------|
 | **OpenAI** | `LLM_PROVIDER=openai` + `OPENAI_API_KEY=sk-...` |
 | **Anthropic** | `LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY=sk-ant-...` |
-| **AWS Bedrock** | `LLM_PROVIDER=bedrock` + `AWS_REGION=us-east-1` (uses IAM role) |
 | **None** | Leave `LLM_PROVIDER` unset — core features still work |
 
-Optional overrides: `OPENAI_MODEL`, `ANTHROPIC_MODEL`, `BEDROCK_MODEL`, `OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL`.
+Optional overrides: `OPENAI_MODEL`, `ANTHROPIC_MODEL`, `OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL`.
 
 ## Architecture
 

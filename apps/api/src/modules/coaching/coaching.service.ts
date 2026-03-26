@@ -5,36 +5,26 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import {
-  BedrockRuntimeClient,
-  ConverseCommand,
-} from '@aws-sdk/client-bedrock-runtime';
 import {
   CoachingSession,
   CoachingSessionStatus,
 } from '../../database/entities/coaching-session.entity';
 import { StudentSkillEstimate } from '../../database/entities/student-skill-estimate.entity';
-
-const MODEL_ID = 'us.anthropic.claude-sonnet-4-20250514-v1:0';
+import { LlmService } from '../../services/llm.service';
 
 @Injectable()
 export class CoachingService {
   private readonly logger = new Logger(CoachingService.name);
-  private readonly client: BedrockRuntimeClient;
 
   constructor(
     @InjectRepository(CoachingSession)
     private readonly sessionRepo: Repository<CoachingSession>,
     @InjectRepository(StudentSkillEstimate)
     private readonly estimateRepo: Repository<StudentSkillEstimate>,
-    private readonly configService: ConfigService,
-  ) {
-    const region = this.configService.get<string>('AWS_REGION') || 'us-east-1';
-    this.client = new BedrockRuntimeClient({ region });
-  }
+    private readonly llmService: LlmService,
+  ) {}
 
   async listSessions(studentId: string): Promise<Partial<CoachingSession>[]> {
     const sessions = await this.sessionRepo.find({
@@ -209,9 +199,9 @@ export class CoachingService {
     weakSkills: StudentSkillEstimate[],
     focusSkillId?: string,
   ): Promise<string> {
-    if (weakSkills.length === 0) {
-      return "Hi! I'm your SAT Reading coach. What would you like to work on today?";
-    }
+    const defaultMessage = "Hi! I'm your SAT Reading coach. What would you like to work on today?";
+
+    if (weakSkills.length === 0) return defaultMessage;
 
     const focusSkill = focusSkillId
       ? weakSkills.find((s) => s.skillId === focusSkillId)
@@ -222,33 +212,17 @@ export class CoachingService {
       .map((e) => `${e.skill.name} (${e.masteryStatus})`)
       .join(', ');
 
-    const prompt = focusSkill
+    const userPrompt = focusSkill
       ? `Generate a short (2-3 sentence) opening greeting for a student who wants to focus on "${focusSkill.skill.name}" (currently ${focusSkill.masteryStatus}). Be warm and specific about what you'll help them with.`
       : `Generate a short (2-3 sentence) opening greeting for a student whose weakest SAT Reading areas are: ${skillSummary}. Mention their top 1-2 weak areas by name and suggest starting with one. Be warm and encouraging.`;
 
-    try {
-      const command = new ConverseCommand({
-        modelId: MODEL_ID,
-        system: [
-          {
-            text: 'You are a friendly SAT Reading tutor greeting a student at the start of a coaching session. Be concise and actionable.',
-          },
-        ],
-        messages: [{ role: 'user', content: [{ text: prompt }] }],
-        inferenceConfig: { maxTokens: 200 },
-      });
+    const text = await this.llmService.callWithMessages({
+      systemPrompt: 'You are a friendly SAT Reading tutor greeting a student at the start of a coaching session. Be concise and actionable.',
+      messages: [{ role: 'user', content: userPrompt }],
+      maxTokens: 200,
+    });
 
-      const response = await this.client.send(command);
-      const text = response.output?.message?.content?.[0]?.text;
-
-      return (
-        text ||
-        "Hi! I'm your SAT Reading coach. Based on your recent practice, I have some areas we can focus on together. Pick a topic below or ask me anything!"
-      );
-    } catch (error) {
-      this.logger.error('Opening message generation failed', error);
-      return "Hi! I'm your SAT Reading coach. Based on your recent practice, I have some areas we can focus on together. Pick a topic below or ask me anything!";
-    }
+    return text || defaultMessage;
   }
 
   private async generateReply(
@@ -266,26 +240,17 @@ Guidelines:
 - Be encouraging but honest about areas needing improvement
 - If asked about a specific passage type or skill, give targeted advice`;
 
-    const converseMessages = messages.map((m) => ({
+    const llmMessages = messages.map((m) => ({
       role: (m.role === 'student' ? 'user' : 'assistant') as 'user' | 'assistant',
-      content: [{ text: m.content }],
+      content: m.content,
     }));
 
-    try {
-      const command = new ConverseCommand({
-        modelId: MODEL_ID,
-        system: [{ text: systemPrompt }],
-        messages: converseMessages,
-        inferenceConfig: { maxTokens: 400 },
-      });
+    const text = await this.llmService.callWithMessages({
+      systemPrompt,
+      messages: llmMessages,
+      maxTokens: 400,
+    });
 
-      const response = await this.client.send(command);
-      const text = response.output?.message?.content?.[0]?.text;
-
-      return text || 'Could you rephrase that? I want to make sure I give you the best advice.';
-    } catch (error) {
-      this.logger.error('Coaching Bedrock call failed', error);
-      return "I'm having trouble connecting right now. Try reviewing the strategies in the Knowledge Base while I get back online!";
-    }
+    return text || "I'm having trouble connecting right now. Try reviewing the strategies in the Knowledge Base while I get back online!";
   }
 }

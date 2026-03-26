@@ -39,7 +39,6 @@ services:
     ports:
       - '8000:8000'
     environment:
-      AWS_REGION: ${AWS_REGION:-us-east-1}
       DATABASE_URL: postgresql://sat_user:sat_password@postgres:5432/sat_reading
       REDIS_URL: redis://redis:6379
     network_mode: host

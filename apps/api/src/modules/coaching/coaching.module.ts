@@ -6,6 +6,7 @@ import { StudentSkillEstimate } from '../../database/entities/student-skill-esti
 import { StudentResponse } from '../../database/entities/student-response.entity';
 import { CoachingService } from './coaching.service';
 import { CoachingController } from './coaching.controller';
+import { LlmService } from '../../services/llm.service';
 
 @Module({
   imports: [
@@ -16,7 +17,7 @@ import { CoachingController } from './coaching.controller';
       StudentResponse,
     ]),
   ],
-  providers: [CoachingService],
+  providers: [CoachingService, LlmService],
   controllers: [CoachingController],
 })
 export class CoachingModule {}

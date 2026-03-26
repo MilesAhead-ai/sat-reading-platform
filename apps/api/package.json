@@ -20,7 +20,6 @@
     "eval:difficulty": "ts-node -r tsconfig-paths/register scripts/eval-difficulty.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-runtime": "^3.1007.0",
     "@nestjs/common": "^10.3.0",
     "@nestjs/config": "^3.2.0",
     "@nestjs/core": "^10.3.0",

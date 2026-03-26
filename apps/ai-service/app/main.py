@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import error_analysis, content_generation, irt_calibration
+from app.routers import error_analysis, irt_calibration
 
 app = FastAPI(
     title="SAT Reading AI Service",
@@ -17,7 +17,6 @@ app.add_middleware(
 )
 
 app.include_router(error_analysis.router, prefix="/api/v1/error-analysis", tags=["Error Analysis"])
-app.include_router(content_generation.router, prefix="/api/v1/content", tags=["Content Generation"])
 app.include_router(irt_calibration.router, prefix="/api/v1/irt", tags=["IRT Calibration"])
 
 
