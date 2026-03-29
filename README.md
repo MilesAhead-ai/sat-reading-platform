@@ -10,7 +10,7 @@ Get the app running locally in under 5 minutes. You need **Node.js >= 20**, **pn
 
 ```bash
 # 1. Clone and set up
-git clone https://github.com/your-org/sat-reading-platform.git
+git clone https://github.com/MilesAhead-ai/sat-reading-platform.git
 cd sat-reading-platform
 cp .env.example .env
 
